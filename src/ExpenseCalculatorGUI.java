@@ -1,11 +1,11 @@
 import java.awt.BorderLayout;
 import java.awt.FlowLayout;
+import java.awt.Font;
 import java.awt.GridLayout;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.PriorityQueue;
-import java.util.Scanner;
 import javax.swing.*;
 
 
@@ -16,6 +16,7 @@ public class ExpenseCalculatorGUI extends JFrame{
 
     private JPanel friendsPanel;
     private JPanel expensesPanel;
+    private JTextArea outputArea;
 
     
     public ExpenseCalculatorGUI(){
@@ -40,22 +41,49 @@ public class ExpenseCalculatorGUI extends JFrame{
         expensesPanel = new JPanel();
         expensesPanel.setLayout(new BoxLayout(expensesPanel, BoxLayout.Y_AXIS));
 
-        JButton addExpenseBtn = new JButton("Add Expense");
+        JButton addExpenseBtn = new JButton("Add expense!");
         addExpenseBtn.addActionListener(e -> addExpenseRow());
 
         JPanel expenseSection = new JPanel(new BorderLayout());
         expenseSection.add(new JScrollPane(expensesPanel), BorderLayout.CENTER);
         expenseSection.add(addExpenseBtn, BorderLayout.SOUTH);
 
+        // ===== OUTPUT SECTION  ====
+        JButton calculateBtn = new JButton("Calculate balance!");
+        outputArea = new JTextArea();  // outputArea already set above
+        outputArea.setEditable(false);
+        outputArea.setFont(new Font("Monospaced", Font.PLAIN, 13));
+        outputArea.setLineWrap(false);
+
+        JScrollPane outputScroll = new JScrollPane(outputArea,
+                JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED,
+                JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED);
+
+
         // Main layout
         JPanel topPanel = new JPanel(new GridLayout(1, 2, 10, 10));
         topPanel.add(friendSection);
         topPanel.add(expenseSection);
+
         JPanel bottomPanel = new JPanel(new BorderLayout(5,5));
+        bottomPanel.add(calculateBtn, BorderLayout.NORTH);
+        bottomPanel.add(outputScroll, BorderLayout.CENTER);
+
         // Split Panel
         JSplitPane splitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT, topPanel, bottomPanel);
-        
-        add(splitPane);
+        splitPane.setResizeWeight(.5);
+        splitPane.setDividerLocation(350);
+
+        calculateBtn.addActionListener(e -> calculateExpenses());
+
+
+        add(splitPane, BorderLayout.CENTER);
+
+        // TODO:
+        // bottom panel: display results
+        // add calculate button
+        // list of frineds who paid
+        // calculate expense() -> update!
     }
 
     // adds to friend section
@@ -98,63 +126,27 @@ public class ExpenseCalculatorGUI extends JFrame{
 
 
 
-    private void calculateExpenses(){ // to be modified (can't pick up things from terminal anymore)
-        Scanner sc = new Scanner(System.in);
-        System.out.print("Enter number of friends: ");
-        int numFriends = sc.nextInt();
-        sc.nextLine();
-
-        // to do: pick up values from GUI
-
-        List<String> friends = new ArrayList<>(); // empty arrayList (dynamic)
-        for(int i = 0; i < numFriends; i++){
-            System.out.print("Enter friend " + (i + 1) + " name: ");
-            friends.add(sc.nextLine().trim());
+    private void calculateExpenses(){ 
+        List<String> friends = getFriendNames();
+        if(friends.isEmpty()){
+            outputArea.setText("Please ADD at least one friend");
+            return;
         }
 
-        System.out.print("Enter number of expense records: ");
-        int numRecords = sc.nextInt();  // number of purchase entries (days)
-        sc.nextLine();
-
-        String[] payers = new String[numRecords];
-        double[] amounts = new double[numRecords];
-
-        for(int i = 0; i < numRecords; i++){
-            System.out.print("Enter name of purchaser from day "+(i+1)+": ");
-            payers[i] = sc.nextLine();
-            
-            System.out.print("Enter amount purchased from day " + (i+1) + ": ");
-            amounts[i] = sc.nextDouble();
-            sc.nextLine();
-        }
-
-        // everyone spends equal amounts
-        // day 1
-        // alice +120
-        // bob -30
-        // carol -30
-        // dave -30
-        // eve -30
-
-        //day 2
-        // alice +80   (-40)
-        // bob +130      (+160)
-        // carol -70    (-40)
-        // dave -70     (-40)
-        // eve -70      (-40)
-
+        // where we initialize balances
         HashMap<String, Double> balances = new HashMap<>();
-
-        for(String friend: friends){
+        for(String friend : friends){
             balances.put(friend, 0.0);
         }
 
-        System.out.println(balances);
+        // System.out.println(balances);
 
-        for(int day = 0; day < numRecords; day++){
+
+        // processes each expense
+        for(ExpenseRow row:expenseRows){
             // retrieve the total and payer of EACH day
-            String payer = payers[day];
-            double total = amounts[day];
+            String payer = row.getPayer();
+            double total = row.getAmount();
             double share = total/friends.size();
 
             for(String friend:friends){
@@ -167,16 +159,23 @@ public class ExpenseCalculatorGUI extends JFrame{
                 }
             }
         }
-        System.out.println("Net balances: ");
+
+        StringBuilder sb = new StringBuilder();  // allows u to edit strings
+        sb.append("==== NET BALANCES ====\n");
         for(String friend:friends){
-            System.out.println(friend + " " + balances.get(friend));
+            sb.append(String.format("%s: %.2f\n", friend, balances.get(friend)));
         }
 
-        System.out.println("Simplified debts");
-        simplifyDebts(balances);
+        // System.out.println("Simplified debts");
+        // simplifyDebts(balances);
+
+        sb.append("==== Simplified Debts ====\n");
+        sb.append(simplifyDebts(balances));
+
+        outputArea.setText(sb.toString());
     }
 
-    static void simplifyDebts(HashMap <String, Double> balances){
+    private String simplifyDebts(HashMap <String, Double> balances){
         // finds largest creditor and smallest debtor
         // when  b.amount is first in (a,b) u r looking for the larger amount
         PriorityQueue <Person> creditors = new PriorityQueue<>((a,b) -> Double.compare(b.amount, a.amount));
@@ -197,12 +196,15 @@ public class ExpenseCalculatorGUI extends JFrame{
                 debtors.offer(new Person(name, -amount));
             }
         }
+
+        StringBuilder sb = new StringBuilder();
         while(!creditors.isEmpty() && !debtors.isEmpty()){
             Person creditor = creditors.poll();
             Person debtor = debtors.poll();
 
             double min = Math.min(creditor.amount, debtor.amount);
             System.out.printf("%s owes %s: $%.2f\n", debtor.name, creditor.name, min);
+            sb.append(String.format("%s owes %s: $%.2f\n", debtor.name, creditor.name, min));
 
             // so if zero then u won't be readded into the hashmap
             if(creditor.amount > min){
@@ -212,6 +214,8 @@ public class ExpenseCalculatorGUI extends JFrame{
                 debtors.offer(new Person(debtor.name, debtor.amount - min));
             }
         }
+
+        return sb.toString();
             
     }
 
